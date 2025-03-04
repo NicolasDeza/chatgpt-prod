@@ -83,7 +83,8 @@ const selectConversation = async (conversation) => {
         );
         if (response?.data?.messages) {
             messages.value = response.data.messages;
-            await scrollToBottom();
+            // Force le scroll vers le bas lors du clic sur une conversation
+            await scrollToBottom(true);
         }
     } catch (error) {
         console.error("Erreur lors du chargement des messages:", error);
@@ -188,6 +189,10 @@ const sendMessage = async (isRetry = false) => {
 
         form.reset("message");
         await scrollToBottom();
+
+        // Mettre à jour l'activité et réordonner la conversation
+        selectedConversation.value.last_activity = new Date().toISOString();
+        updateConversationOrder();
     } catch (error) {
         console.error("Erreur lors de l'envoi du message:", error);
 
@@ -220,11 +225,24 @@ const sendMessage = async (isRetry = false) => {
 };
 
 // Utilitaires
-const scrollToBottom = async () => {
+// Modification de scrollToBottom pour accepter un paramètre facultatif "force"
+const scrollToBottom = async (force = false) => {
     await nextTick();
     const chatContainer = document.querySelector(".chat-container");
     if (chatContainer) {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        if (force) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return;
+        }
+        const threshold = 50; // Seuil en pixels
+        if (
+            chatContainer.scrollHeight -
+                chatContainer.scrollTop -
+                chatContainer.clientHeight <=
+            threshold
+        ) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
     }
 };
 
@@ -280,6 +298,16 @@ watch(
     () => form.model,
     async (newModel, oldModel) => {
         if (newModel && newModel !== oldModel) {
+            // Mettre à jour localement la conversation sélectionnée et l'array des conversations
+            if (selectedConversation.value) {
+                selectedConversation.value.model = newModel;
+                const idx = conversations.value.findIndex(
+                    (c) => c.id === selectedConversation.value.id
+                );
+                if (idx !== -1) {
+                    conversations.value[idx].model = newModel;
+                }
+            }
             try {
                 await axios.post(route("user.updateModel"), {
                     model: newModel,
@@ -423,6 +451,13 @@ const setupChatSubscription = (conversationId) => {
                 nextTick(() => scrollToBottom());
             }
         });
+};
+
+// Nouvelle fonction de mise à jour de l'ordre des conversations
+const updateConversationOrder = () => {
+    conversations.value = conversations.value.sort(
+        (a, b) => new Date(b.last_activity) - new Date(a.last_activity)
+    );
 };
 
 onMounted(() => {
