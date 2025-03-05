@@ -79,8 +79,11 @@ class MessageController extends Controller
 
             // 6. Variables pour accumuler la réponse
             $fullResponse = '';
-            $buffer = '';
+            $tokenBuffer = '';
+            $tokenCount = 0;
+            $maxTokensPerBatch = 5;  // Réduit de 15 à 5 tokens par batch
             $lastBroadcastTime = microtime(true) * 1000;
+            $minBroadcastInterval = 25; // Réduit de 75ms à 25ms pour plus de fluidité
 
             // Nettoyer tous les buffers existants et désactiver le buffering
             while (ob_get_level() > 0) {
@@ -113,29 +116,26 @@ class MessageController extends Controller
                 $chunk = $response->choices[0]->delta->content ?? '';
                 if ($chunk) {
                     $fullResponse .= $chunk;
-                    $buffer .= $chunk;
+                    $tokenBuffer .= $chunk;
+                    $tokenCount++;
                     $currentTime = microtime(true) * 1000;
 
-                    if ($currentTime - $lastBroadcastTime >= 100) {
+                    // Broadcast si on atteint le max de tokens OU si assez de temps s'est écoulé
+                    if ($tokenCount >= $maxTokensPerBatch || ($currentTime - $lastBroadcastTime >= $minBroadcastInterval)) {
                         broadcast(new ChatMessageStreamed(
                             channel: $channelName,
-                            content: $buffer,
+                            content: $tokenBuffer,
                             isComplete: false
                         ));
 
-                        // Vider le buffer après chaque broadcast
-                        $buffer = '';
+                        $tokenBuffer = '';
+                        $tokenCount = 0;
                         $lastBroadcastTime = $currentTime;
 
-                        // Forcer l'envoi des données
-                        if (connection_status() !== CONNECTION_NORMAL) {
-                            break;
-                        }
                         echo "data: " . json_encode(['status' => 'streaming']) . "\n\n";
                         if (ob_get_level() > 0) { @ob_flush(); }
                         flush();
                     }
-                    usleep(100000);
                 }
             }
 
