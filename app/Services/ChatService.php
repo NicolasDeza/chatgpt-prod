@@ -145,18 +145,44 @@ class ChatService
             $models = collect($this->getModels());
             if (!$model || !$models->contains('id', $model)) {
                 $model = self::DEFAULT_MODEL;
-                logger()->info('Modèle par défaut utilisé:', ['model' => $model]);
             }
 
             // Ajout du prompt système au début des messages
             $messages = [$this->getChatSystemPrompt(), ...$messages];
 
-            // Utilisation de la méthode createStreamed pour obtenir un flux progressive
-            return $this->client->chat()->createStreamed([
-                'model' => $model,
-                'messages' => $messages,
-                'temperature' => $temperature,
-            ]);
+            // Ajout de try/catch spécifique pour les erreurs OpenRouter
+            try {
+                $stream = $this->client->chat()->createStreamed([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'temperature' => $temperature,
+                ]);
+
+                // Vérifier si le stream est valide
+                if (!$stream) {
+                    throw new \Exception("Erreur: Le service n'a pas retourné de réponse valide");
+                }
+
+                return $stream;
+
+            } catch (\OpenAI\Exceptions\ErrorException $e) {
+                logger()->error('Erreur OpenRouter:', [
+                    'message' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'model' => $model
+                ]);
+
+                // Messages d'erreur plus précis
+                if (str_contains(strtolower($e->getMessage()), 'rate limit')) {
+                    throw new \Exception("Quota d'appels API dépassé. Veuillez réessayer dans quelques minutes.");
+                }
+                if (str_contains(strtolower($e->getMessage()), 'invalid')) {
+                    throw new \Exception("Configuration API invalide. Contactez l'administrateur.");
+                }
+
+                throw new \Exception("Le service OpenRouter est temporairement indisponible. Veuillez réessayer.");
+            }
+
         } catch (\Exception $e) {
             logger()->error('Erreur dans streamConversation:', [
                 'message' => $e->getMessage(),

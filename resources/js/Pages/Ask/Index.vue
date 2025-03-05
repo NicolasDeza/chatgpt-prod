@@ -168,7 +168,9 @@ const sendMessage = async (isRetry = false) => {
             content: "L'IA réfléchit...",
             isLoading: true,
         });
-        await scrollToBottom();
+
+        // Forcer le scroll vers le bas uniquement lors de l'envoi initial
+        await scrollToBottom(true);
 
         const processedMessage = await processMessage(tempMessage);
 
@@ -188,7 +190,7 @@ const sendMessage = async (isRetry = false) => {
         );
 
         form.reset("message");
-        await scrollToBottom();
+        // Ne pas forcer le scroll ici
 
         // Mettre à jour l'activité et réordonner la conversation
         selectedConversation.value.last_activity = new Date().toISOString();

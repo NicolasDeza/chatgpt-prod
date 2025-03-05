@@ -13,6 +13,9 @@ use Inertia\Inertia;
 //  Page d'accueil (Welcome)
 // ===========================
 Route::get('/', function () {
+    if (auth()->check()) {
+        return redirect()->route('ask.index');
+    }
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
